@@ -172,12 +172,12 @@ def build_html(data: dict) -> str:
                         f">Card Issue Date ({issue_date})<")
 
     html = re.sub(
-        r'(Seating in all Capacity</div>.*?ff1.*?>)2(<)',
+        r'(Seating \(in all\) Capacity</div>.*?ff1.*?>)2(<)',
         lambda m: m.group(1) + seat_cap + m.group(2),
         html, flags=re.DOTALL
     )
     html = re.sub(
-        r'(Unladen Weight Kg</div>.*?ff1.*?>)110(<)',
+        r'(Unladen Weight \(Kg\)</div>.*?ff1.*?>)110(<)',
         lambda m: m.group(1) + unld_wt + m.group(2),
         html, flags=re.DOTALL
     )
@@ -204,7 +204,7 @@ def random_headers() -> dict:
 
 
 def html_to_image(html: str) -> bytes:
-    """Convert HTML to PNG image using AllImageTools API Made by Aarabh"""
+    """Convert HTML to PNG image using AllImageTools API"""
     payload = {
         "html": html,
         "width": 894,
@@ -267,7 +267,6 @@ def rc_pdf():
     except Exception as exc:
         return jsonify({"error": f"PDF conversion failed: {exc}"}), 500
 
-    # Seedha browser mein file bhej rahe hain (No tmpfiles redirect)
     pdf_io = io.BytesIO(pdf_bytes)
     pdf_io.seek(0)
     return send_file(
@@ -303,7 +302,6 @@ def rc_image():
     except Exception as exc:
         return jsonify({"error": f"Image generation failed: {exc}"}), 500
 
-    # Seedha browser mein image bhej rahe hain (No tmpfiles redirect)
     img_io = io.BytesIO(img_bytes)
     img_io.seek(0)
     return send_file(
@@ -350,5 +348,6 @@ def index():
     )
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port, debug=False)
     
