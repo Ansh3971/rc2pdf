@@ -10,30 +10,26 @@ from PIL import Image
 app = Flask(__name__)
 
 # API Configurations
-RC_API_URL = "https://vahanapi.vk177384.workers.dev/"
+RC_API_URL = "https://rc-1-hho5.onrender.com/api/vehicle/"
 IMG_API_URL = "https://www.allimagetools.com/api/html-to-image"
 TEMPLATE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "template.html")
 
 
+def safe_str(val) -> str:
+    """Helper function to handle null/None values perfectly"""
+    if val is None or str(val).strip().upper() == "NULL" or str(val).strip().upper() == "NONE":
+        return ""
+    return str(val).strip()
+
+
 def fetch_rc_data(vehicle_no: str) -> dict:
-    resp = requests.get(RC_API_URL, params={"vehicle_no": vehicle_no}, timeout=30)
+    url = f"{RC_API_URL}{vehicle_no}"
+    resp = requests.get(url, timeout=30)
     resp.raise_for_status()
     data = resp.json()
-    if data.get("statusCode") != 200 or "response" not in data:
+    if not data.get("success") or "data" not in data:
         raise ValueError(f"No data found or API error for vehicle {vehicle_no!r}")
-    return data["response"]
-
-
-def mfg_month_year(raw: str) -> str:
-    if not raw:
-        return ""
-    return raw
-
-
-def extract_state(rto_data: dict) -> str:
-    if not rto_data:
-        return "India"
-    return rto_data.get("statename", "India").strip()
+    return data["data"]
 
 
 def card_issue_date(regn_dt: str) -> str:
@@ -88,49 +84,54 @@ def build_html(data: dict) -> str:
     with open(TEMPLATE, "r", encoding="utf-8") as f:
         html = f.read()
 
-    rto_data      = data.get("rtoData", {})
-    regn_no       = data.get("regNo", "").strip()
-
-    raw_reg_date  = data.get("regDate", "").strip()
+    state_name    = safe_str(data.get("State Name")) or "India"
+    regn_no       = safe_str(data.get("Registration Number"))
+    
+    raw_reg_date  = safe_str(data.get("Registration Date"))
     regn_dt       = format_date_to_card(raw_reg_date)
 
-    raw_expiry    = data.get("insuranceUpto", "").strip()
+    # Nayi API me Registration Validity zyada accurate hoti hai
+    raw_expiry    = safe_str(data.get("Registration Validity"))
     validity      = format_date_to_card(raw_expiry)
 
-    chassis       = data.get("chassis", "").replace("~", " ").strip()
-    engine_no     = data.get("engine", "").strip()
-    owner_name    = data.get("owner", "").strip()
-    father_name   = data.get("ownerFatherName", "").strip()
-    if father_name.upper() == "NA" or not father_name:
+    chassis       = safe_str(data.get("Chassis Number")).replace("~", " ")
+    engine_no     = safe_str(data.get("Engine Number"))
+    owner_name    = safe_str(data.get("Owner Name"))
+    father_name   = safe_str(data.get("Father's Name"))
+    if father_name.upper() == "NA":
         father_name = ""
 
-    # Pick the longer of present and permanent address
-    present_addr  = data.get("presentAddress", "").strip()
-    perm_addr     = data.get("permAddress", "").strip()
+    # Address Handle
+    present_addr  = safe_str(data.get("Present Address"))
+    perm_addr     = safe_str(data.get("Permanent Address"))
     full_address  = present_addr if len(present_addr) >= len(perm_addr) else perm_addr
-
-    # Split into Line 1 and Line 2
     addr_line1, addr_line2 = split_address(full_address, max_chars=35)
 
-    fuel          = data.get("fuelType", "").strip().upper()
-    norms         = "BHARAT STAGE IV"
-    veh_cat       = data.get("vehicleClass", "").strip()
-    maker         = data.get("manufacturer", "").strip()
-    model         = data.get("vehicle", "").strip()
-    color         = "WHITE"
-    body_type     = "SALOON"
+    # Nayi details map kar di hain
+    fuel          = safe_str(data.get("Fuel Type")).upper()
+    norms         = safe_str(data.get("Emission Norms")).upper() or "NA"
+    veh_cat       = safe_str(data.get("Vehicle Category"))
+    maker         = safe_str(data.get("Maker Name"))
+    model         = safe_str(data.get("Model Name"))
+    color         = safe_str(data.get("Color"))
+    body_type     = safe_str(data.get("Body Type"))
 
-    seat_cap      = str(data.get("seatCapacity", "5")).strip()
-    unld_wt       = str(data.get("unladenWeight", "1500")).strip()
-    cubic_cap     = str(data.get("cubicCapacity", "")).strip()
-    no_cyl        = "4"
+    seat_cap      = safe_str(data.get("Seating Capacity")) or "5"
+    unld_wt       = safe_str(data.get("Unladen Weight")) or "1500"
+    cubic_cap     = safe_str(data.get("Cubic Capacity"))
+    no_cyl        = "NA"
 
-    mfg_my        = mfg_month_year(data.get("manufacturerMonthYear", ""))
-    reg_authority = data.get("regAuthority", "").strip()
+    mfg_m         = safe_str(data.get("Manufacture Month"))
+    mfg_y         = safe_str(data.get("Manufacture Year"))
+    if mfg_m and mfg_y:
+        mfg_my = f"{mfg_m}/{mfg_y}"
+    else:
+        mfg_my = mfg_y
+
+    reg_authority = safe_str(data.get("Registration Authority"))
     issue_date    = card_issue_date(raw_reg_date)
-    state_name    = extract_state(rto_data)
 
-    # Core Replacements
+    # Core Replacements (Keeps HTML tags perfectly safe to avoid brackets on output)
     html = html.replace(">Government of Rajasthan<",   f">Government of {state_name}<")
     html = html.replace(">RJ06SQ4302<",                f">{regn_no}<")
     html = html.replace(">27-Apr-2011<",               f">{regn_dt}<")
@@ -140,7 +141,7 @@ def build_html(data: dict) -> str:
     html = html.replace(">SH HAMID KHAN<",             f">{owner_name}<")
     html = html.replace(">UMAID KHA KAYAMKHANI<",      f">{father_name}<")
 
-    # BULLETPROOF ADDRESS LOOKUP:
+    # BULLETPROOF ADDRESS LOOKUP
     html = re.sub(
         r'(ff1 fs2 fc0 sc0 ls0 ws0">), 311001(<)',
         lambda m: m.group(1) + addr_line1 + m.group(2),
@@ -168,8 +169,7 @@ def build_html(data: dict) -> str:
     html = html.replace(">No of Cylinders : 1<",       f">No of Cylinders : {no_cyl}<")
     html = html.replace(">4/2011<",                    f">{mfg_my}<")
     html = html.replace(">BHILWARA DTO, Rajasthan<",   f">{reg_authority}<")
-    html = html.replace(">Card Issue Date (04-2011)<",
-                        f">Card Issue Date ({issue_date})<")
+    html = html.replace(">Card Issue Date (04-2011)<", f">Card Issue Date ({issue_date})<")
 
     html = re.sub(
         r'(Seating \(in all\) Capacity</div>.*?ff1.*?>)2(<)',
@@ -346,6 +346,7 @@ def index():
         "<li><code>/rchtml?vehicle=HR26EV0001</code> — Returns raw HTML</li>"
         "</ul>"
     )
+
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
