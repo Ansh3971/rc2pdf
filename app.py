@@ -10,7 +10,7 @@ from PIL import Image
 app = Flask(__name__)
 
 # API Configurations
-RC_API_URL = "https://rc-1-hho5.onrender.com/api/vehicle/"
+RC_API_URL = "https://plain-rain-b247.proportalxc.workers.dev/?veh="
 IMG_API_URL = "https://www.allimagetools.com/api/html-to-image"
 TEMPLATE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "template.html")
 
